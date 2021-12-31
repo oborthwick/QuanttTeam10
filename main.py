@@ -11,23 +11,21 @@ class Team10Algo(QCAlgorithm):
         self.historical = dict()
         self.tickers = ["CHTR", "MCO", "ODFL", "MKC", "MKTX", "YUM", "JKHY", "HD", "MKTX", "ILMN", "EL",
             "CPRT", "NDAQ", "SHW"]
-        # Schedule for adf scores (new stock to trade) once per week
+        
         self.Schedule.On(self.DateRules.Every(DayOfWeek.Monday), self.TimeRules.At(9, 0), Action(self.StartofWeek))
         self.Schedule.On(self.DateRules.EveryDay(), self.TimeRules.Every(TimeSpan.FromMinutes(181)), Action(self.EveryThreeHours))
         
-        # first order difference, then get adf scores
     def AdfScores(self):
-        #find lowest adf score- this is stock selected to trade for week
         adfs = []
         for symbol, historical in self.historical.items():
-            first_diff = self.historical[symbol]['close'].diff() #assume data will need to be differenced once
-            first_diff = first_diff.iloc[1:] #remove NaNs
+            first_diff = self.historical[symbol]['close'].diff()
+            first_diff = first_diff.iloc[1:]
             adfs.append(adfuller(first_diff)[1])
         self.min_adf = adfs[0]
         for score in adfs:
             if score < self.min_adf:
                 self.min_adf = score
-        self.stock_to_trade = self.tickers[adfs.index(self.min_adf)] #get ticker associated with min adf
+        self.stock_to_trade = self.tickers[adfs.index(self.min_adf)]
         
     def StartofWeek(self):
         for i in self.tickers:
@@ -43,7 +41,6 @@ class Team10Algo(QCAlgorithm):
         self.postrend = 0
         self.negtrend = 0
         
-    #run arima model on stock to trade, use forecast vs current price to make trades
     def OnData(self, data):
         trading_stock = self.AddEquity(self.stock_to_trade, Resolution.Hour).Symbol
         price = self.Securities[self.stock_to_trade].Price
@@ -53,10 +50,10 @@ class Team10Algo(QCAlgorithm):
         result = model.fit()
         forecast = result.forecast()
         if (self.postrend <= 2) and (forecast > price*1.1):
-            self.SetHoldings(self.stock_to_trade, (forecast/price)*1.1)
+            self.SetHoldings(self.stock_to_trade, (forecast/price)*1.5)
             self.postrend += 1
         elif (self.postrend <= 2) and (forecast < price*1.1) and (forecast > price):
-            self.SetHoldings(self.stock_to_trade, (forecast/price)*1.05)
+            self.SetHoldings(self.stock_to_trade, (forecast/price)*1.25)
             self.postrend += 1
         elif (self.postrend <= 2) and (forecast < price) and (forecast > price*0.975):
             self.SetHoldings(self.stock_to_trade, -(forecast/price)*0.05)
@@ -64,10 +61,9 @@ class Team10Algo(QCAlgorithm):
         elif (self.postrend <= 2) and (forecast < price*0.975):
             self.SetHoldings(self.stock_to_trade, -(forecast/price)*0.2)
             self.negtrend += 1
-        #use momentum to influence decision when forecast/price~1
         elif (self.postrend > 2) and (forecast > price):
-            self.SetHoldings(self.stock_to_trade, 1.1)
+            self.SetHoldings(self.stock_to_trade, 1.2)
         elif (self.negtrend > 2) and (forecast < price):
-            self.SetHoldings(self.stock_to_trade, -0.1)
+            self.SetHoldings(self.stock_to_trade, -0.3)
         else:
             self.Liquidate()
